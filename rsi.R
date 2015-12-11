@@ -1,4 +1,5 @@
 #######RSI######
+#Takes in a vector of prices
 rsi <- function(priceS){
   library("TTR")
   
@@ -12,43 +13,54 @@ rsi <- function(priceS){
   priceS[is.na(priceS)] = 0
   closes <- rep(NA, (length(priceS)-1))
   
+  #Compute the simple returns
   closes <- diff(priceS)
   
+  #Compute the up and down change vectors
   upChange <- rep(0, length(closes))
   downChange <- rep(0, length(closes))
-
-  for(j in 1:length(closes)){
-    if(closes[j]>0){
-      upChange[j] <- closes[j]
-      downChange[j] <- 0
-    }
-    else if(closes[j]<0){
-      upChange[j] <- 0
-      downChange[j] <- abs(closes[j])
-    }
-    else{
-      upChange[j] <- 0
-      downChange[j] <- 0
-    }
+  
+  upChange[closes>0] = closes[closes>0]
+  downChange[closes>0] = 0
+  
+  upChange[closes<0] = 0
+  downChange[closes<0] = abs(closes[closes<0])
+  
+  #for(j in 1:length(closes)){
+  #  if(closes[j]>0){
+  #    upChange[j] <- closes[j]
+  #    downChange[j] <- 0
+  #  }
+  #  else if(closes[j]<0){
+  #    upChange[j] <- 0
+  #    downChange[j] <- abs(closes[j])
+  #  }
+  #  else{
+  #    upChange[j] <- 0
+  #    downChange[j] <- 0
+  #  }
   }
   
-  #Calculate relative strength using exponetial moving average
+  #Calculate relative strength using exponetial moving average with no correction
   smoothUp <- EMA(upChange, n=length(closes))
   smoothDown <- EMA(downChange, n=length(closes))
   RS <- smoothUp[length(smoothUp)] / smoothDown[length(smoothDown)]
+
+  #Compute the relative strength index
   RSI <- 100 - 100/(1+RS)
   return(RSI)
   
 }
 
 #########Top Stocks#######
-#Takes in the MAstock data, ticker data csv and a year i.e. 1990 as an input. 
-#Returns a list of lists for 12 months with 10 stocks each. 
+#Takes in the singledate of stock data, the ticker data csv, year i.e. 1990 and number of stocks as inputs. 
+#Returns a list of lists for 12 months with n-stocks each. 
 #Read data in like this.
 #ticker <- read.csv("ticker.csv",header=TRUE)
-#MAstock <- read.csv("MAstock.csv", header=TRUE)
+#singledate <- read.csv("singledate.csv", header=TRUE)
 #Example function call:
-#topN_stocks(singledate, ticker, 1991,3)
+#topN_stocks(singledate, ticker, 1991, 3)
+#This will return the top 3 stocks for each month in 1991
 
 topN_stocks <- function(frame,ticker,year,N_stocks){
   library("lubridate")  
@@ -62,15 +74,18 @@ topN_stocks <- function(frame,ticker,year,N_stocks){
   #Subset frame into only those stocks in the year
   frameStock <- frame[,which(names(frame) %in% stockUni)]
 
-  #Parse the date time
+  #Parse into date time object
   dates <- as.POSIXlt(as.character(frame[,1]), format="%m/%d/%y")
 
   #Subset dataframe by year
   frameStock <- cbind(dates, frameStock)
   frameStock <- subset(frameStock, year(frameStock[,1])==year)
+  
+  #Store a dataframe with the previous years stock prices
   pvYear <- subset(frameStock, year(frameStock[,1])==(year-1))
   topStocks <- list()
   
+  #For each month create a frame with the last 3 months worth of data in order to compute the rsi
   for(i in 1:12){
     
     rs <- rep(NA, ncol(frameStock)-1)
@@ -109,7 +124,7 @@ topN_stocks <- function(frame,ticker,year,N_stocks){
 }
 
 ######Stock Price######
-#Enter month as number 1-12 returns a csv with last 2 months of return for the top ten stocks
+#Enter month as number 1-12 returns a csv with last 3 months of return for the top ten stocks
 #at the end of month i.
 #Read data in like this.
 #ticker <- read.csv("ticker.csv",header=TRUE)
@@ -121,7 +136,7 @@ topN_stocks <- function(frame,ticker,year,N_stocks){
 
 stockPrice <- function(frame,ticker,year,month,N_stocks, optionalData=FALSE, extraStocks=NULL){
   
- 
+ #Not necessary
   if(month == 1&year!=2015){
     month <- 12
     year = year - 1
@@ -141,24 +156,12 @@ stockPrice <- function(frame,ticker,year,month,N_stocks, optionalData=FALSE, ext
   frameStock <- frameStock[year(frameStock[,1])==year,]
   
   #For the top ten stocks get the price series for the next month i.e Compute the 10 stocks for March 31st
-  #these are prices for the stocks in April
+  #these are prices for the stocks in April. This is done for evaluation purposes after the trading is complete
   if(month == 12){
     nextMonth <- frameNY[month(frameNY[,1])==1,]
   }
   else{
   nextMonth <- frameStock[month(frameStock[,1])==(month+1),]
-  }
-  
-  #Gets the first day 2 months in the future i.e Compute the 10 stocks for March 31st then this
-  #is the price of those stocks on May 1st
-  if(month==12){
-    firstMonthTwo <- frameNY[month(frameNY[,1])==2,]
-  }
-  else if(month==11){
-    firstMonthTwo <- frameNY[month(frameNY[,1])==1,]
-  }
-  else{
-  firstMonthTwo <- frameStock[month(frameStock[,1])==(month+2),]
   }
   
   #For years 1991 - 2014
@@ -184,10 +187,13 @@ stockPrice <- function(frame,ticker,year,month,N_stocks, optionalData=FALSE, ext
   names(dates) <- "Date"
   dates1 <- as.data.frame(as.character(nextMonth[,1]))
   names(dates1) <- "Date"
-
+  
+  #If optional data for previous months portfolio is added go here
   if(optionalData==TRUE){
     checkTop <- as.character(topStocks[[month]])
     
+    #When finding the top 2 stocks if one is already in the portfolio choose the 3rd stock and continue until 
+    #you get 2 unique stocks.
       if(sum(extraStocks %in% checkTop)>=1){
         secondCheck = c('TRUE')
         
@@ -200,7 +206,7 @@ stockPrice <- function(frame,ticker,year,month,N_stocks, optionalData=FALSE, ext
       }
     }
 
-    
+    #Get the prices for those months and build a dataframe with the price data for all the stocks
     otherStocks <- frameStock[,which(names(frameStock) %in% extraStocks),drop=FALSE]
     next_extra <- nextMonth[,which(names(nextMonth) %in% extraStocks),drop=FALSE]
     
@@ -217,7 +223,6 @@ stockPrice <- function(frame,ticker,year,month,N_stocks, optionalData=FALSE, ext
     nextMonth <- apply(nextMonth, 2, as.character)
     nextMonth <- apply(nextMonth, 2, as.numeric)
     
- 
     frameStock <- cbind(dates, frameStock)
     nextMonth <- cbind(dates1, nextMonth)
     
@@ -226,7 +231,7 @@ stockPrice <- function(frame,ticker,year,month,N_stocks, optionalData=FALSE, ext
     
   }
   
-  
+  #Do the same as above but just get the price data for 10 stocks. Only used in January 1991.
   else if(optionalData==FALSE){ 
     frameStock <- frameStock[,which(names(frameStock) %in% topStocks[[month]])]
     nextMonth <- nextMonth[,which(names(nextMonth) %in% topStocks[[month]])]
@@ -244,26 +249,19 @@ stockPrice <- function(frame,ticker,year,month,N_stocks, optionalData=FALSE, ext
     names(nextMonth)[1] <- c("Date")
   }
   
-  for(j in 2:ncol(frameStock)){
-    for(i in 2:nrow(frameStock)){
-      
-      if(is.na(frameStock[i,j])==TRUE&is.na(frameStock[i-1,j])==FALSE){
-        frameStock[i,j] <- frameStock[i-1,j]
-      }
-    }
-  }
+  #Was a check for NA values but they were dealt with manually.
+  #for(j in 2:ncol(frameStock)){
+  #  for(i in 2:nrow(frameStock)){
+  #    
+  #    if(is.na(frameStock[i,j])==TRUE&is.na(frameStock[i-1,j])==FALSE){
+  #      frameStock[i,j] <- frameStock[i-1,j]
+  #    }
+  #  }
+  #}
   
-  for(j in 2:ncol(nextMonth)){
-    for(i in 2:nrow(nextMonth)){
-      if(is.na(nextMonth[i,j])==TRUE&is.na(nextMonth[i-1,j])==FALSE){
-        nextMonth[i,j] <- nextMonth[i-1,j]
-      }
-    }
-  }
   
+  #Any NAs in the previous 3 months price data is 0 for calculation purposes
   frameStock[is.na(frameStock)] = 0
-  print(frameStock)
-
   
   return(list(frameStock, nextMonth))
 }
